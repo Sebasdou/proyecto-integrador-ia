@@ -1,11 +1,24 @@
 import cv2 as cv
 import numpy as np
 import math
-
-NOMBRE_DE_ARCHIVO= "images/card_3.jpg"
+import os
+import csv
 
 #Aquí la variable SZ se refiere al tamaño de la imagen a la que se le van a calclar los descriptores
 SZ=256
+
+def read_csv_file(file_path) -> list:
+    with open(file_path, 'r') as file:
+        csv_reader = csv.reader(file)
+        row_list = []
+        for row in csv_reader:
+            row_list.append(row)
+        return row_list
+
+def write_matrix_to_csv(matrix, file_path):
+    with open(file_path, 'w', newline='') as file:
+        csv_writer = csv.writer(file)
+        csv_writer.writerows(matrix)
 
 # esta función encuentra lineas rectas de cierto tamaño mínimo
 def find_lines(img):
@@ -31,53 +44,63 @@ def goodFeaturesToTrack(img): #img must be grayscale, val es el número de esqui
    
 
 # A partir de aquí se empieza a trabajar con la imagen
-src = cv.imread(NOMBRE_DE_ARCHIVO)
-if src is None:
-	print("Could not open or find the image")
+csv_file_path = 'card_evaluation.csv'
+row_list = read_csv_file(csv_file_path)
 
-#ajustamos tamaño modelo de color
-src= cv.resize(src, (SZ, SZ))
-src_gray = cv.cvtColor(src, cv.COLOR_BGR2GRAY)
+for image in row_list:
+    image_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "images", image[0])
+    src = cv.imread(image_dir)
 
-#usamos las funciones de arriba para detectar puntos de interes y líneas
-corners= goodFeaturesToTrack(src_gray)
-lines= find_lines(src_gray)
+    if src is None:
+        print("Could not open or find the image")
 
+    #ajustamos tamaño modelo de color
+    src = cv.resize(src, (SZ, SZ))
+    src_gray = cv.cvtColor(src, cv.COLOR_BGR2GRAY)
 
-#Generar los descriptores, el que está a contiuación es un histograma que guarda la frecuencia con que aparecen pixeles que son parte de una línea en cierta dirección. Se consideran 8 direcciónes, que corresponden a partir en 8 la inclinación de 0 a 180 grados. 
-hist=[0,0,0,0,0,0,0,0]
-total= 0
-for i in range(0, len(lines)):
-		l = lines[i][0]
-		x=int(l[2]-l[0])
-		y=int(l[3]-l[1])
-		
-		mag=cv.cartToPolar(x, y)[0][0][0]
-		ang=cv.cartToPolar(x, y)[1][0][0]
-		bin_ang=int(np.round(ang/(2*np.pi)*16))
-		if bin_ang>7:
-			bin_ang= bin_ang-8
-		if bin_ang ==8:
-			bin_ang= bin_ang-8
-		hist[bin_ang]+=int(mag)
-		total+=int(mag)
+    #usamos las funciones de arriba para detectar puntos de interes y líneas
+    corners = goodFeaturesToTrack(src_gray)
+    lines = find_lines(src_gray)
 
-# se convierte el histograma para que sea con valores de 0 a 100, o sea, porcentual		
-for i in range(len(hist)):
-	hist[i]=int(100*hist[i]/total)	
-print(hist)
+    #Generar los descriptores, el que está a contiuación es un histograma que guarda la frecuencia con que aparecen pixeles que son parte de una línea en cierta dirección. Se consideran 8 direcciónes, que corresponden a partir en 8 la inclinación de 0 a 180 grados. 
+    hist = [0,0,0,0,0,0,0,0]
+    total = 0
+    for i in range(0, len(lines)):
+        l = lines[i][0]
+        x=int(l[2]-l[0])
+        y=int(l[3]-l[1])
+        
+        mag=cv.cartToPolar(x, y)[0][0][0]
+        ang=cv.cartToPolar(x, y)[1][0][0]
+        bin_ang=int(np.round(ang/(2*np.pi)*16))
+        
+        if bin_ang>7:
+            bin_ang= bin_ang-8
+            
+        if bin_ang ==8:
+            bin_ang= bin_ang-8
+            
+        hist[bin_ang]+=int(mag)
+        total+=int(mag)
 
+    # se convierte el histograma para que sea con valores de 0 a 100, o sea, porcentual		
+    for i in range(len(hist)):
+        hist[i]=int(100*hist[i]/total)
 
-#El siguiente descriptor consiste en partir la imagen en 16 cuadrantes y contar cuántos puntos de interés hay en cada uno.
-corners_location=[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
-for i in range(corners.shape[0]):
-	x=int(corners[i,0,0])
-	y=int(corners[i,0,1])
-	cuadx= int(x/(SZ/4))
-	cuady=  int(y/(SZ/4))
-	corners_location[4*cuadx+cuady]+=1
-print(corners_location)
-
+    #El siguiente descriptor consiste en partir la imagen en 16 cuadrantes y contar cuántos puntos de interés hay en cada uno.
+    corners_location=[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    for i in range(corners.shape[0]):
+        x=int(corners[i,0,0])
+        y=int(corners[i,0,1])
+        cuadx= int(x/(SZ/4))
+        cuady=  int(y/(SZ/4))
+        corners_location[4*cuadx+cuady]+=1
+        
+    del image[0]
+    image[-1:-1] = hist
+    image[-1:-1] = corners_location
+    
+write_matrix_to_csv(row_list, "card_evaluation_result.csv")
 
 #A partir de aquí lo que tienen que hacer es que los procesos de arriba se apliquen para toda su base de datos de train y toda su base de datos de test. Y que se guarde un archivo csv con los valores de los vectores que se obtienen y agregar al final si la imagen es de tarjeta o no. En este caso recomiendo poner 0 si no es tarjeta y uno si sí lo es. 
 #Por ejemplo, vamos a suponer que las primeras son 3 imágenes de mi base da datos son 2 tarjeta y uno que no es. 
@@ -114,5 +137,4 @@ cv.namedWindow("Image")
 cv.imshow("Image", copy)
 cv.waitKey()
 '''
-
 
