@@ -95,7 +95,7 @@ for image in row_list:
         cuadx= int(x/(SZ/4))
         cuady=  int(y/(SZ/4))
         corners_location[4*cuadx+cuady]+=1
-        
+
     del image[0]
     image[-1:-1] = hist
     image[-1:-1] = corners_location
